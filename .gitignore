@@ -1,0 +1,10 @@
+bin/
+obj/
+.env
+uploads/
+.env
+.env.*
+!.env.example
+bin/
+obj/
+.vs/
