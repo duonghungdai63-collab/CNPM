@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="DaLat.DAL/DaLat.DAL.csproj" />
+  <Project Path="DaLat.BLL/DaLat.BLL.csproj" />
+  <Project Path="DaLat.API/DaLat.API.csproj" />
+  <Project Path="DaLat.Tests/DaLat.Tests.csproj" />
+</Solution>
