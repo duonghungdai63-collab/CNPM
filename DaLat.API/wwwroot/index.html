@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Đà Lạt Audio Guide</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+:root{--bg:#f3f7f1;--card:#fff;--ink:#1f2d24;--mute:#5d6b62;--pine:#2f6b4f;--onpine:#fff;--rose:#d9547f;--line:#dbe4d9}
+@media(prefers-color-scheme:dark){:root{--bg:#111a14;--card:#1a251e;--ink:#e8efe9;--mute:#9bab9f;--pine:#62c196;--onpine:#0f1f16;--rose:#f27ca3;--line:#2a3a2f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:96px}
+header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px;position:sticky;top:0;background:var(--bg);z-index:500;border-bottom:1px solid var(--line)}
+h1{font-size:1.15rem;margin:0}
+h1 small{display:block;font-weight:400;font-size:.8rem;color:var(--mute)}
+select,button{font:inherit;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 12px}
+button{cursor:pointer}
+button.primary{background:var(--pine);color:var(--onpine);border-color:var(--pine);font-weight:600}
+button.on{background:var(--rose);border-color:var(--rose);color:#fff}
+main{max-width:760px;margin:0 auto;padding:12px 16px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+#status{color:var(--mute);font-size:.9rem;margin:4px 0 10px;min-height:1.4em}
+#map{height:260px;border-radius:14px;border:1px solid var(--line);margin-bottom:14px;z-index:1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:12px}
+.card.hl{outline:2px solid var(--rose)}
+.card img{width:100%;height:160px;object-fit:cover;display:block}
+.body{padding:12px 14px}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.card h2{font-size:1.05rem;margin:0}
+.addr{color:var(--mute);font-size:.85rem;margin:2px 0 8px}
+.chip{white-space:nowrap;font-size:.8rem;padding:2px 10px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+.chip.in{background:var(--pine);border-color:var(--pine);color:var(--onpine);font-weight:600}
+.fb{font-size:.8rem;color:var(--rose);margin:0 0 6px}
+details{margin:8px 0}summary{cursor:pointer;color:var(--mute);font-size:.9rem}
+details p{margin:6px 0 0;white-space:pre-line}
+#now{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));display:none;z-index:600}
+#now.show{display:flex;gap:12px;align-items:center;justify-content:space-between}
+#now b{display:block}#now span{color:var(--mute);font-size:.85rem}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Đà Lạt Audio Guide<small id="sub"></small></h1>
+  <select id="lang" aria-label="Language"></select>
+</header>
+<main>
+  <div class="bar">
+    <button id="gpsBtn" class="primary"></button>
+    <button id="demoBtn"></button>
+  </div>
+  <div id="status"></div>
+  <div id="map"></div>
+  <div id="list"></div>
+</main>
+<div id="now"><div><b id="nowName"></b><span id="nowSub"></span></div><button id="stopBtn" class="primary"></button></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+"use strict";
+const T = {
+  vi:{sub:"Thuyết minh tự động theo vị trí",gpsOn:"Bật GPS",gpsOff:"Tắt GPS",demoOn:"Chạy demo",demoOff:"Dừng demo",listen:"Nghe",stop:"Dừng",here:"Bạn đang ở đây",fallback:"Chưa có bản dịch ngôn ngữ này, đang dùng ngôn ngữ thay thế",read:"Đọc nội dung",denied:"Không lấy được vị trí. Hãy cho phép truy cập vị trí trong trình duyệt.",nogps:"Trình duyệt không hỗ trợ GPS.",nearest:"Gần nhất",empty:"Chưa có địa điểm nào.",err:"Không tải được dữ liệu. Vui lòng thử lại.",demoRun:"Đang chạy demo",playing:"Đang phát"},
+  en:{sub:"Location-based audio guide",gpsOn:"Turn on GPS",gpsOff:"Turn off GPS",demoOn:"Run demo",demoOff:"Stop demo",listen:"Listen",stop:"Stop",here:"You are here",fallback:"Not available in this language yet, showing a fallback",read:"Read text",denied:"Could not get your location. Please allow location access.",nogps:"GPS is not supported by this browser.",nearest:"Nearest",empty:"No places yet.",err:"Could not load data. Please try again.",demoRun:"Demo running",playing:"Now playing"},
+  zh:{sub:"根据位置自动讲解",gpsOn:"开启定位",gpsOff:"关闭定位",demoOn:"运行演示",demoOff:"停止演示",listen:"收听",stop:"停止",here:"您在这里",fallback:"暂无此语言版本，已使用备用语言",read:"查看文字",denied:"无法获取位置，请允许浏览器访问位置。",nogps:"此浏览器不支持定位。",nearest:"最近",empty:"暂无地点。",err:"数据加载失败，请重试。",demoRun:"演示进行中",playing:"正在播放"},
+  ja:{sub:"位置に合わせた音声ガイド",gpsOn:"GPSをオン",gpsOff:"GPSをオフ",demoOn:"デモ開始",demoOff:"デモ停止",listen:"聞く",stop:"停止",here:"現在地",fallback:"この言語は未対応のため代替言語で表示しています",read:"テキストを見る",denied:"位置情報を取得できません。ブラウザで許可してください。",nogps:"このブラウザはGPSに対応していません。",nearest:"最寄り",empty:"スポットがありません。",err:"データを読み込めません。",demoRun:"デモ実行中",playing:"再生中"},
+  ko:{sub:"위치 기반 오디오 가이드",gpsOn:"GPS 켜기",gpsOff:"GPS 끄기",demoOn:"데모 실행",demoOff:"데모 중지",listen:"듣기",stop:"정지",here:"현재 위치",fallback:"이 언어는 아직 없어 대체 언어로 표시합니다",read:"본문 보기",denied:"위치를 가져올 수 없습니다. 위치 접근을 허용해 주세요.",nogps:"이 브라우저는 GPS를 지원하지 않습니다.",nearest:"가장 가까움",empty:"장소가 없습니다.",err:"데이터를 불러오지 못했습니다.",demoRun:"데모 실행 중",playing:"재생 중"}
+};
+const $ = id => document.getElementById(id);
+const tr = k => (T[st.lang] || T.en)[k];
+const uuid = () => crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
+const safe = (fn, d) => { try { return fn(); } catch { return d; } };
+
+// Thiết bị ẩn danh (lưu lâu dài) và phiên (mỗi tab một phiên)
+const clientId = safe(() => localStorage.dl_client || (localStorage.dl_client = uuid()), uuid());
+const sessionKey = safe(() => sessionStorage.dl_session || (sessionStorage.dl_session = uuid()), uuid());
+
+const st = { lang:"vi", langs:[], places:[], pos:null, gps:false, demo:false, watch:null, demoTimer:null,
+             played:new Map(), current:null, audio:null, map:null, markers:new Map(), me:null };
+
+async function api(path, opt) {
+  const r = await fetch("/api" + path, opt && {method:opt.method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(opt.body)});
+  if (!r.ok) throw new Error(r.status);
+  return r.status === 204 ? null : r.json();
+}
+
+function dist(a, b, c, d) { // Haversine, mét
+  const R = 6371000, rad = x => x * Math.PI / 180, dLat = rad(c - a), dLon = rad(d - b);
+  const h = Math.sin(dLat/2)**2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+const fmt = m => m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(1) + " km";
+const locale = code => (st.langs.find(l => l.code === code) || {}).speechLocale || code;
+
+// ---------- Phát thuyết minh ----------
+function stop() {
+  st.current = null;
+  if (st.audio) { st.audio.pause(); st.audio = null; }
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  renderNow();
+}
+function speak(p) {
+  if (!("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(p.narrationText);
+  u.lang = locale(p.languageCode);
+  u.onend = () => { if (st.current === p) stop(); };
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+function play(p, trigger) {
+  stop();
+  st.current = p;
+  st.played.set(p.id, Date.now());
+  if (p.audioUrl) {
+    const a = new Audio(p.audioUrl);
+    st.audio = a;
+    a.onended = () => { if (st.current === p) stop(); };
+    a.play().catch(() => speak(p)); // không phát được file thì đọc bằng giọng trình duyệt
+  } else speak(p);
+  if (!st.demo) // chế độ demo không ghi lượt nghe để không làm sai thống kê
+    api("/playlogs", {method:"POST", body:{placeId:p.id, languageCode:p.languageCode, triggerType:trigger, clientId}}).catch(() => {});
+  renderNow();
+}
+function renderNow() {
+  const p = st.current;
+  $("now").classList.toggle("show", !!p);
+  if (p) { $("nowName").textContent = p.name; $("nowSub").textContent = tr("playing"); }
+}
+// Tự phát khi vào bán kính; mỗi địa điểm không lặp lại trong 10 phút
+function autoPlay() {
+  if (!st.gps && !st.demo || st.current) return;
+  const hit = st.places.find(p => p.inRange && Date.now() - (st.played.get(p.id) || 0) > 600000);
+  if (hit) play(hit, "gps");
+}
+
+// ---------- Hiển thị ----------
+function applyPos() {
+  for (const p of st.places) {
+    p.dist = st.pos ? dist(st.pos.lat, st.pos.lng, p.latitude, p.longitude) : null;
+    p.inRange = p.dist != null && p.dist <= p.radiusMeters;
+  }
+  if (st.pos) st.places.sort((a, b) => a.dist - b.dist);
+  renderList(); updateMap(); autoPlay();
+  const near = st.places[0];
+  $("status").textContent = st.demo ? tr("demoRun") + (near ? " · " + near.name : "")
+    : st.pos && near ? tr("nearest") + ": " + near.name + " (" + fmt(near.dist) + ")" : "";
+}
+function renderList() {
+  const list = $("list");
+  list.replaceChildren();
+  if (!st.places.length) { list.textContent = tr("empty"); return; }
+  for (const p of st.places) {
+    const c = document.createElement("div");
+    c.className = "card"; c.id = "p" + p.id;
+    if (p.imageUrl) { const i = document.createElement("img"); i.src = p.imageUrl; i.alt = p.name; i.loading = "lazy"; c.append(i); }
+    const b = document.createElement("div"); b.className = "body";
+    const row = document.createElement("div"); row.className = "row";
+    const h = document.createElement("h2"); h.textContent = p.name;
+    row.append(h);
+    if (p.dist != null) {
+      const ch = document.createElement("span");
+      ch.className = "chip" + (p.inRange ? " in" : "");
+      ch.textContent = p.inRange ? tr("here") : fmt(p.dist);
+      row.append(ch);
+    }
+    b.append(row);
+    if (p.address) { const a = document.createElement("div"); a.className = "addr"; a.textContent = p.address; b.append(a); }
+    if (p.isFallback) { const f = document.createElement("p"); f.className = "fb"; f.textContent = tr("fallback"); b.append(f); }
+    const btn = document.createElement("button");
+    btn.className = "primary"; btn.textContent = "▶ " + tr("listen");
+    btn.onclick = () => play(p, "manual");
+    const d = document.createElement("details");
+    const s = document.createElement("summary"); s.textContent = tr("read");
+    const t = document.createElement("p"); t.textContent = p.narrationText;
+    d.append(s, t);
+    b.append(btn, d); c.append(b); list.append(c);
+  }
+}
+function buildMap() {
+  if (!window.L) return;
+  if (!st.map) {
+    st.map = L.map("map");
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:"© OpenStreetMap"}).addTo(st.map);
+  }
+  st.markers.forEach(m => m.remove()); st.markers.clear();
+  const pts = [];
+  for (const p of st.places) {
+    const m = L.circleMarker([p.latitude, p.longitude], {radius:9, color:"#d9547f", fillOpacity:.8}).addTo(st.map);
+    m.bindTooltip(p.name);
+    m.on("click", () => {
+      const el = $("p" + p.id); if (!el) return;
+      el.scrollIntoView({behavior:"smooth", block:"center"});
+      el.classList.add("hl"); setTimeout(() => el.classList.remove("hl"), 1800);
+    });
+    st.markers.set(p.id, m); pts.push([p.latitude, p.longitude]);
+  }
+  if (pts.length) st.map.fitBounds(pts, {padding:[24, 24]});
+}
+function updateMap() {
+  if (!st.map || !st.pos) return;
+  if (!st.me) st.me = L.circleMarker([st.pos.lat, st.pos.lng], {radius:7, color:"#2563eb", fillOpacity:1}).addTo(st.map);
+  else st.me.setLatLng([st.pos.lat, st.pos.lng]);
+}
+function renderStatic() {
+  document.documentElement.lang = st.lang;
+  $("sub").textContent = tr("sub");
+  $("gpsBtn").textContent = tr(st.gps ? "gpsOff" : "gpsOn");
+  $("demoBtn").textContent = tr(st.demo ? "demoOff" : "demoOn");
+  $("gpsBtn").classList.toggle("on", st.gps);
+  $("demoBtn").classList.toggle("on", st.demo);
+  $("stopBtn").textContent = tr("stop");
+}
+
+// ---------- GPS và demo ----------
+function startGps() {
+  if (!navigator.geolocation) { $("status").textContent = tr("nogps"); return; }
+  stopDemo();
+  st.gps = true;
+  st.watch = navigator.geolocation.watchPosition(
+    pos => { st.pos = {lat:pos.coords.latitude, lng:pos.coords.longitude}; applyPos(); },
+    () => { stopGps(); $("status").textContent = tr("denied"); },
+    {enableHighAccuracy:true, maximumAge:5000, timeout:20000});
+  renderStatic();
+}
+function stopGps() {
+  if (st.watch != null) navigator.geolocation.clearWatch(st.watch);
+  st.watch = null; st.gps = false; renderStatic();
+}
+function startDemo() {
+  stopGps(); stop();
+  st.demo = true; st.played.clear();
+  const route = [...st.places].sort((a, b) => a.id - b.id);
+  let i = 0;
+  const step = () => {
+    const p = route[i++ % route.length];
+    st.pos = {lat:p.latitude, lng:p.longitude};
+    stop(); st.played.delete(p.id);
+    applyPos();
+    if (st.map) st.map.panTo([p.latitude, p.longitude]);
+  };
+  if (route.length) { step(); st.demoTimer = setInterval(step, 12000); }
+  renderStatic();
+}
+function stopDemo() {
+  if (!st.demo) return;
+  clearInterval(st.demoTimer); st.demoTimer = null; st.demo = false;
+  st.pos = null; stop(); applyPos(); renderStatic();
+}
+
+// ---------- Tải dữ liệu, ping ----------
+async function loadPlaces() {
+  try {
+    st.places = await api("/places?lang=" + st.lang);
+    applyPos(); buildMap(); updateMap();
+  } catch { $("status").textContent = tr("err"); }
+}
+function ping() {
+  api("/visits/ping", {method:"POST", body:{
+    clientId, sessionKey, deviceLanguage:navigator.language, languageCode:st.lang,
+    gpsEnabled:st.gps && !st.demo, demo:st.demo,
+    latitude:st.pos ? st.pos.lat : null, longitude:st.pos ? st.pos.lng : null}}).catch(() => {});
+}
+async function init() {
+  try { st.langs = await api("/languages"); } catch { $("status").textContent = tr("err"); return; }
+  const saved = safe(() => localStorage.dl_lang, null);
+  const dev = (navigator.language || "en").toLowerCase().split("-")[0];
+  const has = c => st.langs.some(l => l.code === c);
+  st.lang = has(saved) ? saved : has(dev) ? dev : "en";
+  const sel = $("lang");
+  for (const l of st.langs) { const o = document.createElement("option"); o.value = l.code; o.textContent = l.nativeName; sel.append(o); }
+  sel.value = st.lang;
+  sel.onchange = () => {
+    st.lang = sel.value; safe(() => localStorage.dl_lang = st.lang);
+    stop(); renderStatic(); loadPlaces(); ping();
+  };
+  $("gpsBtn").onclick = () => st.gps ? stopGps() : startGps();
+  $("demoBtn").onclick = () => st.demo ? stopDemo() : startDemo();
+  $("stopBtn").onclick = stop;
+  renderStatic();
+  await loadPlaces();
+  ping(); setInterval(ping, 30000); // ping mỗi 30 giây để tính người online
+}
+init();
+</script>
+</body>
+</html>
