@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Quản trị – Đà Lạt Audio Guide</title>
+<style>
+:root{--bg:#f3f6f3;--card:#fff;--ink:#1f2d24;--mute:#5d6b62;--pine:#2f6b4f;--onpine:#fff;--rose:#c9406c;--line:#d9e2d9}
+@media(prefers-color-scheme:dark){:root{--bg:#111a14;--card:#1a251e;--ink:#e8efe9;--mute:#9bab9f;--pine:#62c196;--onpine:#0f1f16;--rose:#f27ca3;--line:#2a3a2f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+[hidden]{display:none!important}
+h2{margin:0;font-size:1.2rem}
+header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header b{margin-right:8px}
+nav{display:flex;gap:4px;flex:1;flex-wrap:wrap}
+button,input,select,textarea{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 11px}
+button{cursor:pointer}button:disabled{opacity:.6;cursor:wait}
+button.primary,.tab.on,nav button.on{background:var(--pine);border-color:var(--pine);color:var(--onpine);font-weight:600}
+button.danger{color:var(--rose);border-color:var(--rose)}
+main{max-width:1000px;margin:0 auto;padding:16px}
+.top,.bar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.bar{justify-content:flex-start}
+.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:14px}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:.8rem;color:var(--mute);font-weight:600}
+tr:last-child td{border-bottom:0}
+td small{display:block;color:var(--mute)}
+.act{white-space:nowrap}.act button{margin-right:6px}
+label{display:block;margin-bottom:12px;font-weight:600;font-size:.9rem}
+label input:not([type=checkbox]),label textarea,label select{display:block;width:100%;margin-top:4px;font-weight:400}
+label small{font-weight:400;color:var(--mute)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.stat b{display:block;font-size:1.6rem}.stat span{color:var(--mute);font-size:.85rem}
+.chart{display:flex;align-items:flex-end;gap:2px;height:120px;padding:8px}
+.chart i{flex:1;background:var(--pine);border-radius:3px 3px 0 0;min-height:2px}
+.meter{background:var(--line);border-radius:4px;height:8px;min-width:80px}.meter i{display:block;height:100%;background:var(--pine);border-radius:4px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.login{max-width:340px;margin:12vh auto;padding:0 16px}
+.err{color:var(--rose);min-height:1.4em}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--pine);color:var(--onpine);padding:10px 18px;border-radius:10px;opacity:0;pointer-events:none;transition:.2s;max-width:90vw;z-index:20}
+#toast.show{opacity:1}#toast.err{background:var(--rose);color:#fff}
+.prev{max-height:110px;border-radius:8px;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="login" class="login">
+  <div class="panel">
+    <h2>Quản trị Đà Lạt Audio Guide</h2><br>
+    <form id="loginForm">
+      <label>Tài khoản<input id="u" autocomplete="username" required></label>
+      <label>Mật khẩu<input id="p" type="password" autocomplete="current-password" required></label>
+      <div class="err" id="loginErr"></div>
+      <button class="primary" style="width:100%">Đăng nhập</button>
+    </form>
+  </div>
+</div>
+<div id="app" hidden>
+  <header>
+    <b>🌲 Quản trị</b>
+    <nav id="nav"></nav>
+    <span id="who"></span>
+    <button id="out">Đăng xuất</button>
+  </header>
+  <main id="view"></main>
+</div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+// Tạo phần tử DOM an toàn: nội dung luôn là văn bản, không bao giờ là HTML.
+const h = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e[k] = v;
+    else if (v !== false && v != null) e.setAttribute(k, v === true ? "" : v);
+  }
+  e.append(...kids.flat().filter(x => x != null && x !== false));
+  return e;
+};
+const S = { langs: [], timer: null };
+let token = sessionStorage.getItem("dl_admin") || "";
+
+function toast(msg, err) {
+  const t = $("toast");
+  t.textContent = msg; t.className = "show" + (err ? " err" : "");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.className = "", err ? 6000 : 2500);
+}
+async function api(path, { method = "GET", body, form } = {}) {
+  const o = { method, headers: {} };
+  if (token) o.headers.Authorization = "Bearer " + token;
+  if (form) o.body = form;
+  else if (body !== undefined) { o.headers["Content-Type"] = "application/json"; o.body = JSON.stringify(body); }
+  const r = await fetch("/api/admin" + path, o);
+  if (r.status === 401 && path !== "/auth/login") { logout(); throw new Error("Phiên đăng nhập đã hết hạn."); }
+  if (!r.ok) { let m = "Lỗi " + r.status; try { m = (await r.json()).message || m; } catch {} throw new Error(m); }
+  return r.status === 204 ? null : r.json();
+}
+const upload = async (file, type) => {
+  const f = new FormData(); f.append("file", file);
+  return (await api("/uploads?type=" + type, { method: "POST", form: f })).url;
+};
+const tbl = (head, rows) => h("div", { class: "wrap" }, h("table", {}, h("thead", {}, h("tr", {}, head.map(x => h("th", {}, x)))), h("tbody", {}, rows)));
+const utc = s => new Date(/Z|[+-]\d\d:\d\d$/.test(s) ? s : s + "Z");
+
+// ---------- Đăng nhập / điều hướng ----------
+function show() {
+  $("login").hidden = !!token; $("app").hidden = !token;
+  if (token) { $("who").textContent = sessionStorage.getItem("dl_name") || ""; go("places"); }
+}
+function logout() { sessionStorage.clear(); token = ""; show(); }
+$("out").onclick = logout;
+$("loginForm").onsubmit = async e => {
+  e.preventDefault(); $("loginErr").textContent = "";
+  try {
+    const r = await api("/auth/login", { method: "POST", body: { username: $("u").value.trim(), password: $("p").value } });
+    token = r.token; sessionStorage.setItem("dl_admin", token); sessionStorage.setItem("dl_name", r.displayName || "");
+    $("p").value = ""; show();
+  } catch (x) { $("loginErr").textContent = x.message; }
+};
+const VIEWS = { places: ["Địa điểm", placesView], langs: ["Ngôn ngữ", langsView], stats: ["Thống kê", statsView], account: ["Tài khoản", accountView] };
+$("nav").append(...Object.entries(VIEWS).map(([k, [name]]) => h("button", { id: "n_" + k, onclick: () => go(k) }, name)));
+function go(v) {
+  clearInterval(S.timer);
+  for (const k in VIEWS) $("n_" + k).classList.toggle("on", k === v);
+  $("view").replaceChildren(h("p", {}, "Đang tải..."));
+  VIEWS[v][1]().catch(e => { $("view").replaceChildren(h("p", { class: "err" }, e.message)); toast(e.message, true); });
+}
+
+// ---------- Địa điểm ----------
+async function placesView() {
+  const [ps, ls] = await Promise.all([api("/places"), api("/languages")]);
+  S.langs = ls;
+  const rows = ps.map(p => {
+    const vi = p.translations.find(t => t.languageCode === "vi");
+    return h("tr", {},
+      h("td", {}, vi ? vi.name : "(chưa có tên)", h("small", {}, p.slug)),
+      h("td", {}, p.translations.length + "/" + ls.length),
+      h("td", {}, h("input", { type: "checkbox", checked: p.isActive, title: "Hiện với du khách", onchange: async e => {
+        try { await api(`/places/${p.id}/active`, { method: "PATCH", body: { isActive: e.target.checked } }); toast("Đã cập nhật"); }
+        catch (x) { e.target.checked = !e.target.checked; toast(x.message, true); }
+      } })),
+      h("td", { class: "act" },
+        h("button", { onclick: () => editor(p) }, "Sửa"),
+        h("button", { class: "danger", onclick: async () => {
+          if (!confirm("Xóa địa điểm này cùng toàn bộ bản dịch và lượt nghe?")) return;
+          try { await api("/places/" + p.id, { method: "DELETE" }); toast("Đã xóa"); go("places"); } catch (x) { toast(x.message, true); }
+        } }, "Xóa")));
+  });
+  $("view").replaceChildren(
+    h("div", { class: "top" }, h("h2", {}, "Địa điểm"), h("button", { class: "primary", onclick: () => editor(null) }, "+ Thêm địa điểm")),
+    tbl(["Tên / slug", "Bản dịch", "Hiển thị", ""], rows));
+}
+
+function editor(p) {
+  const tr = {};
+  (p ? p.translations : []).forEach(t => tr[t.languageCode] = { name: t.name, narrationText: t.narrationText, audioUrl: t.audioUrl || "" });
+  const f = {};
+  const fld = (label, key, type, val) => {
+    const i = h("input", { type: type || "text", value: val ?? "", step: type === "number" ? "any" : null });
+    f[key] = i; return h("label", {}, label, i);
+  };
+  f.active = h("input", { type: "checkbox", checked: p ? p.isActive : true });
+  f.img = h("input", { value: p?.imageUrl ?? "", placeholder: "/uploads/..." });
+  const prev = h("img", { class: "prev", hidden: !p?.imageUrl, src: p?.imageUrl ?? "" });
+  f.img.oninput = () => { prev.hidden = !f.img.value; prev.src = f.img.value; };
+  const imgFile = h("input", { type: "file", accept: "image/jpeg,image/png,image/webp", onchange: async e => {
+    if (!e.target.files[0]) return;
+    try { f.img.value = await upload(e.target.files[0], "image"); f.img.oninput(); toast("Đã tải ảnh lên"); } catch (x) { toast(x.message, true); }
+  } });
+
+  let cur = S.langs.some(l => l.code === "vi") ? "vi" : S.langs[0].code;
+  const tabs = h("div", { class: "tabs" }), pane = h("div", {});
+  const renderTabs = () => tabs.replaceChildren(...S.langs.map(l =>
+    h("button", { class: "tab" + (l.code === cur ? " on" : ""), onclick: () => { cur = l.code; renderTabs(); renderPane(); } },
+      l.nativeName + (tr[l.code] && tr[l.code].name && tr[l.code].narrationText ? " ✓" : "") + (l.isActive ? "" : " (tắt)"))));
+  function renderPane() {
+    const code = cur, v = tr[code] || (tr[code] = { name: "", narrationText: "", audioUrl: "" });
+    const cnt = h("small", {}, v.narrationText.length + "/4000");
+    const name = h("input", { value: v.name, maxlength: 200, oninput: e => v.name = e.target.value });
+    const nar = h("textarea", { rows: 8, maxlength: 4000, oninput: e => { v.narrationText = e.target.value; cnt.textContent = e.target.value.length + "/4000"; } }, v.narrationText);
+    const aud = h("input", { value: v.audioUrl, placeholder: "/uploads/... (bỏ trống để dùng giọng đọc của trình duyệt)", oninput: e => v.audioUrl = e.target.value });
+    const file = h("input", { type: "file", accept: "audio/*", onchange: async e => {
+      if (!e.target.files[0]) return;
+      try { v.audioUrl = aud.value = await upload(e.target.files[0], "audio"); toast("Đã tải âm thanh lên"); } catch (x) { toast(x.message, true); }
+    } });
+    const items = [h("label", {}, "Tên", name), h("label", {}, "Nội dung thuyết minh ", cnt, nar), h("label", {}, "Âm thanh (mp3, wav, ogg, m4a – tùy chọn)", aud, file)];
+    if (code !== "vi") {
+      const btn = h("button", { class: "primary", onclick: async () => {
+        const vi = tr.vi;
+        if (!vi || !vi.name.trim() || !vi.narrationText.trim()) return toast("Hãy nhập tên và thuyết minh tiếng Việt trước.", true);
+        const old = btn.textContent; btn.disabled = true; btn.textContent = "Đang dịch... (có thể mất vài phút)";
+        try {
+          const r = await api("/places/auto-translate", { method: "POST", body: { targetLanguage: code, name: vi.name, narrationText: vi.narrationText } });
+          v.name = r.name; v.narrationText = r.narrationText;
+          if (cur === code) renderPane(); renderTabs();
+          toast("Đã dịch xong. Hãy đọc lại rồi bấm Lưu.");
+        } catch (x) { toast(x.message, true); } finally { btn.disabled = false; btn.textContent = old; }
+      } }, "Dịch tự động từ tiếng Việt");
+      items.push(h("p", {}, btn, " ", h("small", {}, "Bản dịch chỉ là bản nháp, chưa lưu cho đến khi bạn bấm Lưu.")));
+    }
+    pane.replaceChildren(...items);
+  }
+  renderTabs(); renderPane();
+
+  const save = h("button", { class: "primary", onclick: async () => {
+    const body = {
+      slug: f.slug.value.trim(), latitude: parseFloat(f.lat.value), longitude: parseFloat(f.lng.value),
+      radiusMeters: parseInt(f.radius.value, 10), address: f.addr.value.trim() || null, imageUrl: f.img.value.trim() || null,
+      isActive: f.active.checked,
+      translations: Object.entries(tr).map(([languageCode, v]) => ({ languageCode, name: v.name, narrationText: v.narrationText, audioUrl: v.audioUrl || null }))
+    };
+    if ([body.latitude, body.longitude, body.radiusMeters].some(Number.isNaN)) return toast("Vĩ độ, kinh độ và bán kính phải là số.", true);
+    save.disabled = true;
+    try {
+      if (p) await api("/places/" + p.id, { method: "PUT", body }); else await api("/places", { method: "POST", body });
+      toast("Đã lưu"); go("places");
+    } catch (x) { toast(x.message, true); save.disabled = false; }
+  } }, "Lưu");
+
+  $("view").replaceChildren(
+    h("div", { class: "top" }, h("h2", {}, p ? "Sửa địa điểm" : "Thêm địa điểm"), h("button", { onclick: () => go("places") }, "← Quay lại")),
+    h("div", { class: "panel" },
+      h("div", { class: "grid" },
+        fld("Slug (chữ thường, số, gạch ngang)", "slug", "text", p?.slug),
+        fld("Vĩ độ", "lat", "number", p?.latitude), fld("Kinh độ", "lng", "number", p?.longitude),
+        fld("Bán kính kích hoạt (20–2000 m)", "radius", "number", p?.radiusMeters ?? 100)),
+      fld("Địa chỉ", "addr", "text", p?.address),
+      h("label", {}, "Ảnh đại diện", f.img, imgFile, prev),
+      h("label", {}, f.active, " Hiển thị với du khách")),
+    h("div", { class: "panel" }, h("h2", {}, "Bản dịch"), h("br"), tabs, pane,
+      h("small", {}, "Bản dịch thiếu tên hoặc nội dung sẽ không được lưu.")),
+    save);
+}
+
+// ---------- Ngôn ngữ ----------
+async function langsView() {
+  const ls = S.langs = await api("/languages");
+  const f = {};
+  const fld = (label, key, type) => { const i = h("input", { type: type || "text" }); f[key] = i; return h("label", {}, label, i); };
+  const form = h("div", { class: "panel" }, h("h2", {}, "Thêm / cập nhật ngôn ngữ"), h("br"),
+    h("div", { class: "grid" }, fld("Mã (vd: fr, zh-TW)", "code"), fld("Tên tiếng Anh", "name"), fld("Tên bản ngữ", "native"),
+      fld("Mã giọng đọc (vd: fr-FR)", "locale"), fld("Thứ tự", "sort", "number")),
+    h("button", { class: "primary", onclick: async () => {
+      try {
+        await api("/languages", { method: "POST", body: { code: f.code.value.trim(), name: f.name.value.trim(), nativeName: f.native.value.trim(),
+          speechLocale: f.locale.value.trim(), isActive: true, sortOrder: parseInt(f.sort.value || "0", 10) } });
+        toast("Đã lưu"); go("langs");
+      } catch (x) { toast(x.message, true); }
+    } }, "Lưu ngôn ngữ"));
+  const rows = ls.map(l => h("tr", {},
+    h("td", {}, l.code), h("td", {}, l.nativeName, h("small", {}, l.name)), h("td", {}, l.speechLocale), h("td", {}, String(l.sortOrder)),
+    h("td", {}, h("input", { type: "checkbox", checked: l.isActive, onchange: async e => {
+      try { await api(`/languages/${encodeURIComponent(l.code)}/active`, { method: "PATCH", body: { isActive: e.target.checked } }); toast("Đã cập nhật"); }
+      catch (x) { e.target.checked = !e.target.checked; toast(x.message, true); }
+    } })),
+    h("td", {}, h("button", { onclick: () => { f.code.value = l.code; f.name.value = l.name; f.native.value = l.nativeName; f.locale.value = l.speechLocale; f.sort.value = l.sortOrder; scrollTo(0, 9999); } }, "Sửa"))));
+  $("view").replaceChildren(h("h2", {}, "Ngôn ngữ"), h("br"), tbl(["Mã", "Tên", "Giọng đọc", "Thứ tự", "Hiển thị", ""], rows),
+    form, h("small", {}, "Tắt một ngôn ngữ chỉ ẩn khỏi du khách, không xóa dữ liệu bản dịch."));
+}
+
+// ---------- Thống kê ----------
+async function statsView() {
+  const day = d => new Date(d).toISOString().slice(0, 10);
+  const from = h("input", { type: "date", value: day(Date.now() - 29 * 864e5) }), to = h("input", { type: "date", value: day(Date.now()) });
+  const out = h("div", {}), online = h("div", {});
+  const counts = (title, items) => {
+    const max = Math.max(1, ...items.map(i => i.count));
+    return h("div", {}, h("h2", {}, title), h("br"), tbl(["Giá trị", "Số lượng", ""], items.length
+      ? items.map(i => h("tr", {}, h("td", {}, i.key), h("td", {}, String(i.count)), h("td", {}, h("div", { class: "meter" }, h("i", { style: `width:${i.count / max * 100}%` }))))) : [h("tr", {}, h("td", { colspan: 3 }, "Chưa có dữ liệu"))]));
+  };
+  async function load() {
+    try {
+      const q = `?from=${from.value}&to=${to.value}`;
+      const [v, pl] = await Promise.all([api("/stats/visits" + q), api("/stats/plays" + q)]);
+      const max = Math.max(1, ...v.byDay.map(d => d.sessions));
+      out.replaceChildren(
+        h("div", { class: "stats" },
+          ...[["Tổng phiên", v.totalSessions], ["Khách duy nhất", v.uniqueVisitors], ["Lượt nghe", pl.total], ["Nghe bằng GPS", pl.gps], ["Nghe thủ công", pl.manual]]
+            .map(([n, x]) => h("div", { class: "stat" }, h("b", {}, String(x)), h("span", {}, n)))),
+        h("h2", {}, "Phiên truy cập theo ngày"), h("br"),
+        h("div", { class: "wrap chart" }, v.byDay.map(d => h("i", { title: `${d.date}: ${d.sessions}`, style: `height:${d.sessions / max * 100}%` }))),
+        h("h2", {}, "Địa điểm được nghe nhiều nhất"), h("br"),
+        tbl(["#", "Địa điểm", "Tổng", "GPS", "Thủ công"], pl.byPlace.length
+          ? pl.byPlace.map((p, i) => h("tr", {}, h("td", {}, String(i + 1)), h("td", {}, p.name), h("td", {}, String(p.total)), h("td", {}, String(p.gps)), h("td", {}, String(p.manual))))
+          : [h("tr", {}, h("td", { colspan: 5 }, "Chưa có lượt nghe"))]),
+        h("div", { class: "cols" }, counts("Thiết bị", v.byDevice), counts("Trình duyệt", v.byBrowser), counts("Ngôn ngữ truy cập", v.byLanguage), counts("Ngôn ngữ nghe", pl.byLanguage)));
+    } catch (x) { toast(x.message, true); }
+  }
+  async function loadOnline() {
+    try {
+      const s = await api("/visitors/online");
+      online.replaceChildren(h("div", { class: "stats" }, h("div", { class: "stat" }, h("b", {}, String(s.length)), h("span", {}, "Đang online (90 giây gần nhất)"))),
+        s.length ? tbl(["Thiết bị", "Trình duyệt", "Hệ điều hành", "Ngôn ngữ", "GPS", "Hoạt động"], s.map(x => h("tr", {},
+          h("td", {}, x.deviceType), h("td", {}, x.browser), h("td", {}, x.os), h("td", {}, x.languageCode || "-"),
+          h("td", {}, x.gpsEnabled ? `${x.latitude}, ${x.longitude}` : "tắt"), h("td", {}, Math.round((Date.now() - utc(x.lastSeenAt)) / 1000) + " giây trước")))) : null);
+    } catch {}
+  }
+  $("view").replaceChildren(h("h2", {}, "Thống kê"), h("br"),
+    h("div", { class: "bar" }, "Từ", from, "đến", to, h("button", { class: "primary", onclick: load }, "Xem")), online, out);
+  load(); loadOnline(); S.timer = setInterval(loadOnline, 15000);
+}
+
+// ---------- Tài khoản ----------
+async function accountView() {
+  const cur = h("input", { type: "password", autocomplete: "current-password" }), nw = h("input", { type: "password", autocomplete: "new-password" }), nw2 = h("input", { type: "password", autocomplete: "new-password" });
+  $("view").replaceChildren(h("h2", {}, "Đổi mật khẩu"), h("br"), h("div", { class: "panel", style: "max-width:420px" },
+    h("label", {}, "Mật khẩu hiện tại", cur), h("label", {}, "Mật khẩu mới (ít nhất 8 ký tự)", nw), h("label", {}, "Nhập lại mật khẩu mới", nw2),
+    h("button", { class: "primary", onclick: async () => {
+      if (nw.value !== nw2.value) return toast("Mật khẩu nhập lại không khớp.", true);
+      try { await api("/auth/change-password", { method: "POST", body: { currentPassword: cur.value, newPassword: nw.value } }); cur.value = nw.value = nw2.value = ""; toast("Đã đổi mật khẩu"); }
+      catch (x) { toast(x.message, true); }
+    } }, "Đổi mật khẩu")));
+}
+
+show();
+</script>
+</body>
+</html>
