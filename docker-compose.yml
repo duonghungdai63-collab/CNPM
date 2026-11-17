@@ -1,0 +1,55 @@
+services:
+  db:
+    image: mysql:8.4
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: hcmc_audioguide
+    ports: ["127.0.0.1:3307:3306"]
+    volumes: [mysql_data:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development 
+      ConnectionStrings__Default: "Server=db;Port=3306;Database=hcmc_audioguide;User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4"
+      Admin__Username: ${ADMIN_USERNAME:-admin}
+      Admin__Password: ${ADMIN_PASSWORD}
+      AdminLocalOnly: ${ADMIN_LOCAL_ONLY:-true}
+      Jwt__Key: ${JWT_KEY}
+      TrustProxy: ${TRUST_PROXY:-false}
+      Uploads__Path: /app/uploads
+      Ollama__BaseUrl: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      Ollama__Model: ${OLLAMA_MODEL:-translategemma:4b}
+      Ollama__TimeoutSeconds: ${OLLAMA_TIMEOUT_SECONDS:-600}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: ["8080:8080"]
+    volumes: [uploads:/app/uploads]
+    restart: unless-stopped
+
+  phpmyadmin:
+    image: phpmyadmin:5
+    environment:
+      PMA_HOST: db
+    depends_on: [db]
+    ports: ["127.0.0.1:8081:80"]
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate --url http://api:8080
+    depends_on: [api]
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  uploads:
