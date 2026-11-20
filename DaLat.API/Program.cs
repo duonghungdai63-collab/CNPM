@@ -132,11 +132,4 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/uploads"
 });
 
-app.UseRouting();
-app.UseRateLimiter();
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapControllers();
-
-app.Run();
-
+ư
